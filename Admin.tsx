@@ -143,25 +143,37 @@ export default function Admin() {
     return found ? found.label : id;
   };
 
-  // Logic: Re-evaluate Status for Display (Fixes Shift & Overtime Logic)
+  // Logic: Re-evaluate Status for Display (Fixes Night Shift 17:15 - 02:15)
   const getStatusLabel = (log: any) => {
     const time = log.jam; 
     const type = log.tipe.toUpperCase();
     const shift = log.shift || "Siang";
 
     if (type === 'MASUK') {
-      const limit = shift === 'Siang' ? '08:00' : '20:00';
+      // Shift Siang: 08:00, Shift Malam: 17:15
+      const limit = shift === 'Siang' ? '08:00' : '17:15';
       return time <= limit ? t[lang].s_ontime : t[lang].s_late;
     } else {
-      const outLimit = shift === 'Siang' ? '17:00' : '05:00';
-      const otLimit = shift === 'Siang' ? '18:00' : '06:00';
-      
-      // If checked out after one hour of scheduled shift end
-      if (time >= otLimit && shift === 'Siang') return t[lang].s_overtime;
-      // Handle night shift cross-day overtime logic simplified:
-      if (shift === 'Malam' && (time >= '06:00' && time < '12:00')) return t[lang].s_overtime;
-      
-      return time < outLimit ? t[lang].s_early : t[lang].s_ontime;
+      if (shift === 'Siang') {
+        const outLimit = '17:00';
+        const otLimit = '18:00';
+        if (time >= otLimit) return t[lang].s_overtime;
+        return time < outLimit ? t[lang].s_early : t[lang].s_ontime;
+      } else {
+        // Shift Malam: 17:15 - 02:15
+        const outLimit = '02:15';
+        const otLimit = '03:15'; // Overtime starts after 03:15
+
+        // Case: Checkout between 17:15 and 23:59 (Early)
+        if (time >= '17:15' && time <= '23:59') return t[lang].s_early;
+        
+        // Case: Checkout after midnight
+        if (time < outLimit) return t[lang].s_early;
+        if (time >= outLimit && time < otLimit) return t[lang].s_ontime;
+        if (time >= otLimit && time < '12:00') return t[lang].s_overtime;
+        
+        return t[lang].s_ontime;
+      }
     }
   };
 
