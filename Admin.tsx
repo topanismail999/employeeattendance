@@ -10,8 +10,9 @@ export default function Admin() {
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [filterDate, setFilterDate] = useState('');
-  const [searchTerm, setSearchTerm] = useState(''); // Untuk Riwayat
-  const [searchKaryawan, setSearchKaryawan] = useState(''); // State Baru: Untuk Daftar Karyawan
+  const [filterDateEnd, setFilterDateEnd] = useState(''); // New: Date Range End
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchKaryawan, setSearchKaryawan] = useState('');
   const [filterType, setFilterType] = useState('ALL');
   const [filterJabatan, setFilterJabatan] = useState('ALL');
   
@@ -54,7 +55,10 @@ export default function Admin() {
       filterOut: "Pulang",
       filterJabatanAll: "Semua Jabatan",
       totalExport: "Total Karyawan Unik",
-      // Daftar Jabatan ID
+      s_ontime: "Tepat Waktu",
+      s_late: "Terlambat",
+      s_early: "Pulang Awal",
+      s_overtime: "Lembur",
       j_hrd: "HRD",
       j_spv: "Supervisor",
       j_adm: "Admin",
@@ -99,7 +103,10 @@ export default function Admin() {
       filterOut: "下班签退",
       filterJabatanAll: "所有职位",
       totalExport: "唯一员工总数",
-      // Daftar Jabatan CN
+      s_ontime: "准时",
+      s_late: "迟到",
+      s_early: "早退",
+      s_overtime: "加班",
       j_hrd: "人力资源 (HRD)",
       j_spv: "主管 (Supervisor)",
       j_adm: "行政 (Admin)",
@@ -110,7 +117,6 @@ export default function Admin() {
     }
   };
 
-  // Objek Jabatan untuk Sinkronisasi Bahasa
   const daftarJabatan = [
     { id: "HRD", label: t[lang].j_hrd },
     { id: "Supervisor", label: t[lang].j_spv },
@@ -132,6 +138,76 @@ export default function Admin() {
     setLoading(false);
   };
 
+  const getJabatanLabel = (id: string) => {
+    const found = daftarJabatan.find(j => j.id === id);
+    return found ? found.label : id;
+  };
+
+  // Logic: Re-evaluate Status for Display (Fixes Shift & Overtime Logic)
+  const getStatusLabel = (log: any) => {
+    const time = log.jam; 
+    const type = log.tipe.toUpperCase();
+    const shift = log.shift || "Siang";
+
+    if (type === 'MASUK') {
+      const limit = shift === 'Siang' ? '08:00' : '20:00';
+      return time <= limit ? t[lang].s_ontime : t[lang].s_late;
+    } else {
+      const outLimit = shift === 'Siang' ? '17:00' : '05:00';
+      const otLimit = shift === 'Siang' ? '18:00' : '06:00';
+      
+      // If checked out after one hour of scheduled shift end
+      if (time >= otLimit && shift === 'Siang') return t[lang].s_overtime;
+      // Handle night shift cross-day overtime logic simplified:
+      if (shift === 'Malam' && (time >= '06:00' && time < '12:00')) return t[lang].s_overtime;
+      
+      return time < outLimit ? t[lang].s_early : t[lang].s_ontime;
+    }
+  };
+
+  const filteredKaryawan = karyawan.filter(k => 
+    k.nama.toLowerCase().includes(searchKaryawan.toLowerCase())
+  );
+
+  const filteredLogs = logs.filter(log => {
+    const logDate = log.created_at.split('T')[0];
+    const matchesDate = filterDate ? (filterDateEnd ? (logDate >= filterDate && logDate <= filterDateEnd) : logDate === filterDate) : true;
+    const matchesSearch = log.nama.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesType = filterType === 'ALL' ? true : log.tipe.toUpperCase() === filterType;
+    const matchesJabatan = filterJabatan === 'ALL' ? true : log.jabatan === filterJabatan;
+    return matchesDate && matchesSearch && matchesType && matchesJabatan;
+  });
+
+  const exportToExcel = () => {
+    const headers = ["No", t[lang].colName, t[lang].colJabatan, "Shift", "Type", "Time", "Date", t[lang].colStatus];
+    const rows = filteredLogs.map((log, i) => [
+      i + 1,
+      log.nama,
+      getJabatanLabel(log.jabatan),
+      log.shift || "-",
+      log.tipe,
+      log.jam,
+      log.created_at.split('T')[0],
+      getStatusLabel(log)
+    ]);
+
+    const csvContent = "\uFEFF" + [
+      [`REPORT: ${filterDate || 'All'} - ${filterDateEnd || 'Now'}`],
+      headers,
+      ...rows,
+      [""],
+      [`${t[lang].totalExport}: ${new Set(filteredLogs.map(l => l.nama)).size}`]
+    ].map(e => e.join(",")).join("\n");
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `Absensi_Pro_${new Date().getTime()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+  };
+
   const addKaryawan = async (e: any) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -143,69 +219,19 @@ export default function Admin() {
       Swal.fire({ title: lang === 'ID' ? 'BERHASIL!' : '成功！', text: `${nama.value} ${t[lang].successAdd}`, icon: 'success', confirmButtonColor: '#4f46e5', borderRadius: '2rem' });
       e.target.reset();
       fetchData();
-    } else {
-      Swal.fire({ title: 'Error', text: error.message, icon: 'error' });
     }
     setIsSubmitting(false);
   };
 
   const deleteData = async (table: string, id: string, name: string) => {
     const result = await Swal.fire({
-      title: t[lang].confirmTitle,
-      text: `${name}. ${t[lang].confirmText}`,
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: '#ef4444',
-      cancelButtonColor: '#64748b',
-      confirmButtonText: t[lang].confirmBtn,
-      borderRadius: '1.5rem'
+      title: t[lang].confirmTitle, text: `${name}. ${t[lang].confirmText}`, icon: 'warning',
+      showCancelButton: true, confirmButtonColor: '#ef4444', confirmButtonText: t[lang].confirmBtn, borderRadius: '1.5rem'
     });
     if (result.isConfirmed) {
       const { error } = await supabase.from(table).delete().eq('id', id);
-      if (!error) {
-        Swal.fire(t[lang].deleted, '', 'success');
-        fetchData();
-      }
+      if (!error) { Swal.fire(t[lang].deleted, '', 'success'); fetchData(); }
     }
-  };
-
-  // Filter untuk Daftar Karyawan
-  const filteredKaryawan = karyawan.filter(k => 
-    k.nama.toLowerCase().includes(searchKaryawan.toLowerCase())
-  );
-
-  // Filter untuk Riwayat Logs
-  const filteredLogs = logs.filter(log => {
-    const matchesDate = filterDate ? log.created_at.startsWith(filterDate) : true;
-    const matchesSearch = log.nama.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesType = filterType === 'ALL' ? true : log.tipe.toUpperCase() === filterType;
-    const matchesJabatan = filterJabatan === 'ALL' ? true : log.jabatan === filterJabatan;
-    return matchesDate && matchesSearch && matchesType && matchesJabatan;
-  });
-
-  // Fungsi helper untuk menampilkan label jabatan yang sesuai bahasa
-  const getJabatanLabel = (id: string) => {
-    const found = daftarJabatan.find(j => j.id === id);
-    return found ? found.label : id;
-  };
-
-  const exportToCSV = () => {
-    const headers = [t[lang].colName, t[lang].colJabatan, t[lang].colTime.split(' ')[2], t[lang].colTime.split(' ')[0], t[lang].colStatus, 'Tanggal'];
-    const csvData = filteredLogs.map(log => [
-      log.nama, 
-      getJabatanLabel(log.jabatan),
-      log.tipe, 
-      log.jam, 
-      log.status,
-      new Date(log.created_at).toLocaleDateString(lang === 'ID' ? 'id-ID' : 'zh-CN')
-    ]);
-    const uniqueEmployees = new Set(filteredLogs.map(log => log.nama)).size;
-    let csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + csvData.map(e => e.join(",")).join("\n") + `\n\n${t[lang].totalExport},${uniqueEmployees}`;
-    const link = document.createElement("a");
-    link.setAttribute("href", encodeURI(csvContent));
-    link.setAttribute("download", `Laporan_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
   };
 
   return (
@@ -263,13 +289,7 @@ export default function Admin() {
                 <h2 className="text-xl font-black uppercase italic text-slate-900">{t[lang].listTitle}</h2>
                 <span className="text-[10px] font-black text-indigo-400 uppercase italic">{karyawan.length} {t[lang].members}</span>
                </div>
-               {/* INPUT CARI KARYAWAN BARU */}
-               <input 
-                type="text" 
-                placeholder={t[lang].searchPlace} 
-                onChange={(e) => setSearchKaryawan(e.target.value)}
-                className="bg-slate-50 border border-slate-100 text-[10px] font-bold p-2 px-4 rounded-xl outline-none focus:ring-2 focus:ring-indigo-100 w-48 shadow-inner"
-               />
+               <input type="text" placeholder={t[lang].searchPlace} onChange={(e) => setSearchKaryawan(e.target.value)} className="bg-slate-50 border border-slate-100 text-[10px] font-bold p-2 px-4 rounded-xl outline-none focus:ring-2 focus:ring-indigo-100 w-48 shadow-inner" />
             </div>
             <div className="overflow-y-auto pr-2 custom-scrollbar">
               <table className="w-full text-left border-separate border-spacing-y-3">
@@ -286,11 +306,9 @@ export default function Admin() {
                   {filteredKaryawan.map(k => (
                     <tr key={k.id} className="bg-slate-50/50 hover:bg-slate-50 transition-all">
                       <td className="py-4 pl-4 rounded-l-2xl font-black text-xs uppercase italic text-slate-700">{k.nama}</td>
-                      <td className="py-4 text-center text-[9px] font-black text-indigo-400 uppercase italic">
-                        {getJabatanLabel(k.jabatan)}
-                      </td>
+                      <td className="py-4 text-center text-[9px] font-black text-indigo-400 uppercase italic">{getJabatanLabel(k.jabatan)}</td>
                       <td className="py-4 text-center font-mono text-indigo-600 font-bold tracking-widest text-xs">{k.pin}</td>
-                      <td className="py-4 text-center"><span className="text-[9px] font-bold bg-white border border-slate-200 px-2 py-1 rounded-lg uppercase">{k.shift}</span></td>
+                      <td className="py-4 text-center"><span className="text-[9px] font-bold bg-white border border-slate-200 px-2 py-1 rounded-lg uppercase">{k.shift === 'Siang' ? t[lang].shiftSiang : t[lang].shiftMalam}</span></td>
                       <td className="py-4 text-right pr-4 rounded-r-2xl">
                         <button onClick={() => deleteData('karyawan', k.id, k.nama)} className="text-rose-400 hover:text-rose-600 p-2 transition-all active:scale-90"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                       </td>
@@ -308,29 +326,29 @@ export default function Admin() {
              <div className="flex items-center gap-4">
                 <h3 className="font-black text-xs uppercase tracking-[0.3em] text-slate-500 italic">{t[lang].historyTitle}</h3>
                 <span className="bg-indigo-600 text-white text-[10px] font-black px-3 py-1 rounded-lg">{filteredLogs.length} Data</span>
-                <button onClick={exportToCSV} className="bg-emerald-500 hover:bg-emerald-600 text-white text-[9px] font-black px-4 py-2 rounded-xl uppercase tracking-widest transition-all shadow-lg shadow-emerald-100">Export CSV</button>
+                <button onClick={exportToExcel} className="bg-emerald-500 hover:bg-emerald-600 text-white text-[9px] font-black px-4 py-2 rounded-xl uppercase tracking-widest transition-all shadow-lg shadow-emerald-100">Export Pro</button>
              </div>
              
              <div className="flex flex-wrap items-center gap-3">
-               <select 
-                onChange={(e) => setFilterJabatan(e.target.value)}
-                className="bg-white border border-slate-200 text-[10px] font-bold p-2 rounded-xl outline-none focus:ring-2 focus:ring-indigo-100"
-               >
+               <div className="flex items-center bg-white border border-slate-200 rounded-xl px-2 gap-1">
+                 <span className="text-[8px] font-bold text-slate-400 uppercase">From:</span>
+                 <input type="date" onChange={(e) => setFilterDate(e.target.value)} className="text-[10px] font-bold p-2 outline-none" />
+                 <span className="text-[8px] font-bold text-slate-400 uppercase">To:</span>
+                 <input type="date" onChange={(e) => setFilterDateEnd(e.target.value)} className="text-[10px] font-bold p-2 outline-none" />
+               </div>
+
+               <select onChange={(e) => setFilterJabatan(e.target.value)} className="bg-white border border-slate-200 text-[10px] font-bold p-2 rounded-xl outline-none">
                  <option value="ALL">{t[lang].filterJabatanAll}</option>
                  {daftarJabatan.map(j => <option key={j.id} value={j.id}>{j.label}</option>)}
                </select>
 
-               <select 
-                onChange={(e) => setFilterType(e.target.value)}
-                className="bg-white border border-slate-200 text-[10px] font-bold p-2 rounded-xl outline-none focus:ring-2 focus:ring-indigo-100"
-               >
+               <select onChange={(e) => setFilterType(e.target.value)} className="bg-white border border-slate-200 text-[10px] font-bold p-2 rounded-xl outline-none">
                  <option value="ALL">{t[lang].filterAll}</option>
                  <option value="MASUK">{t[lang].filterIn}</option>
                  <option value="PULANG">{t[lang].filterOut}</option>
                </select>
 
-               <input type="date" onChange={(e) => setFilterDate(e.target.value)} className="bg-white border border-slate-200 text-[10px] font-bold p-2 rounded-xl outline-none focus:ring-2 focus:ring-indigo-100" />
-               <input type="text" placeholder={t[lang].searchPlace} onChange={(e) => setSearchTerm(e.target.value)} className="bg-white border border-slate-200 text-[10px] font-bold p-2 px-4 rounded-xl outline-none focus:ring-2 focus:ring-indigo-100 w-40" />
+               <input type="text" placeholder={t[lang].searchPlace} onChange={(e) => setSearchTerm(e.target.value)} className="bg-white border border-slate-200 text-[10px] font-bold p-2 px-4 rounded-xl outline-none w-40" />
                <button onClick={fetchData} className="text-[9px] font-black uppercase text-indigo-600 hover:text-indigo-800 tracking-[0.2em] flex items-center gap-2 ml-2">
                  {loading && <span className="animate-spin">◌</span>} {t[lang].refresh}
                </button>
@@ -350,50 +368,52 @@ export default function Admin() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 italic">
-                {filteredLogs.map((log, index) => (
-                  <tr key={log.id} className="hover:bg-slate-50/80 transition-all group">
-                    <td className="p-8 font-black text-slate-300 text-xs">{(index + 1).toString().padStart(2, '0')}</td>
-                    <td className="p-6">
-                      <div className="w-14 h-14 rounded-2xl bg-slate-100 border-2 border-white shadow-sm overflow-hidden transition-transform group-hover:scale-105 flex items-center justify-center">
-                        {log.foto_url ? (
-                          <img 
-                            src={`${log.foto_url}?t=${new Date(log.created_at).getTime()}`} 
-                            className="w-full h-full object-cover" 
-                            alt="Log" 
-                            onError={(e: any) => {
-                              e.target.onerror = null;
-                              e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(log.nama)}&background=EEF2FF&color=4F46E5&bold=true`;
-                            }}
-                          />
-                        ) : (
-                          <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50">
-                            <svg className="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                            <span className="text-[7px] text-slate-400 uppercase font-black">No Pic</span>
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-8">
-                        <p className="text-slate-900 font-black uppercase text-xs tracking-tight">{log.nama}</p>
-                        <p className="text-[8px] text-indigo-500 font-black uppercase tracking-widest">{getJabatanLabel(log.jabatan)}</p>
-                        <p className="text-[9px] text-slate-400 font-bold uppercase mt-1 tracking-tighter italic">
-                          {new Date(log.created_at).toLocaleDateString(lang === 'ID' ? 'id-ID' : 'zh-CN', { weekday: 'long', day: 'numeric', month: 'long' })}
-                        </p>
-                    </td>
-                    <td className="p-8">
-                      <div className="flex flex-col">
-                        <span className="text-indigo-600 font-black text-lg font-mono tracking-tighter">{log.jam}</span>
-                        <span className={`text-[8px] uppercase font-black tracking-widest ${log.tipe.toUpperCase() === 'MASUK' ? 'text-emerald-500' : 'text-orange-500'}`}>{log.tipe}</span>
-                      </div>
-                    </td>
-                    <td className="p-8 text-center">
-                      <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-[0.1em] inline-block shadow-sm ${log.status === 'On Time' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-rose-50 text-rose-600 border border-rose-100'}`}>{log.status}</span>
-                    </td>
-                    <td className="p-8 text-right">
-                        <button onClick={() => deleteData('logs_absensi', log.id, `${log.nama}`)} className="bg-rose-50 text-rose-400 hover:bg-rose-500 hover:text-white p-2 rounded-xl transition-all"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
-                    </td>
-                  </tr>
-                ))}
+                {filteredLogs.map((log, index) => {
+                  const statusLabel = getStatusLabel(log);
+                  const isBadStatus = statusLabel === t[lang].s_late || statusLabel === t[lang].s_early;
+                  const isOvertime = statusLabel === t[lang].s_overtime;
+
+                  return (
+                    <tr key={log.id} className="hover:bg-slate-50/80 transition-all group">
+                      <td className="p-8 font-black text-slate-300 text-xs">{(index + 1).toString().padStart(2, '0')}</td>
+                      <td className="p-6">
+                        <div className="w-14 h-14 rounded-2xl bg-slate-100 border-2 border-white shadow-sm overflow-hidden transition-transform group-hover:scale-105 flex items-center justify-center">
+                          {log.foto_url ? (
+                            <img src={`${log.foto_url}?t=${new Date(log.created_at).getTime()}`} className="w-full h-full object-cover" alt="Log" />
+                          ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50">
+                              <svg className="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-8">
+                          <p className="text-slate-900 font-black uppercase text-xs tracking-tight">{log.nama}</p>
+                          <p className="text-[8px] text-indigo-500 font-black uppercase tracking-widest">{getJabatanLabel(log.jabatan)}</p>
+                          <p className="text-[9px] text-slate-400 font-bold uppercase mt-1 tracking-tighter italic">
+                            {new Date(log.created_at).toLocaleDateString(lang === 'ID' ? 'id-ID' : 'zh-CN', { weekday: 'long', day: 'numeric', month: 'long' })}
+                          </p>
+                      </td>
+                      <td className="p-8">
+                        <div className="flex flex-col">
+                          <span className="text-indigo-600 font-black text-lg font-mono tracking-tighter">{log.jam}</span>
+                          <span className={`text-[8px] uppercase font-black tracking-widest ${log.tipe.toUpperCase() === 'MASUK' ? 'text-emerald-500' : 'text-orange-500'}`}>{log.tipe}</span>
+                        </div>
+                      </td>
+                      <td className="p-8 text-center">
+                        <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-[0.1em] inline-block shadow-sm 
+                          ${isOvertime ? 'bg-amber-50 text-amber-600 border border-amber-100' : 
+                            isBadStatus ? 'bg-rose-50 text-rose-600 border border-rose-100' : 
+                            'bg-emerald-50 text-emerald-600 border border-emerald-100'}`}>
+                          {statusLabel}
+                        </span>
+                      </td>
+                      <td className="p-8 text-right">
+                          <button onClick={() => deleteData('logs_absensi', log.id, `${log.nama}`)} className="bg-rose-50 text-rose-400 hover:bg-rose-500 hover:text-white p-2 rounded-xl transition-all"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             {filteredLogs.length === 0 && <div className="p-20 text-center text-slate-300 uppercase font-black tracking-widest text-xs italic">{t[lang].noData}</div>}
