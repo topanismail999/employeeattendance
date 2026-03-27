@@ -11,8 +11,9 @@ export default function Admin() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [filterDate, setFilterDate] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  // Filter Tipe (Masuk/Pulang)
   const [filterType, setFilterType] = useState('ALL');
+  // State baru untuk filter jabatan
+  const [filterJabatan, setFilterJabatan] = useState('ALL');
   
   const [lang, setLang] = useState<'ID' | 'CN'>('ID');
 
@@ -31,6 +32,7 @@ export default function Admin() {
       members: "Anggota",
       colName: "Nama",
       colShift: "Shift",
+      colJabatan: "Jabatan",
       colOpt: "Opsi",
       historyTitle: "Riwayat Absensi",
       searchPlace: "Cari Nama...",
@@ -50,6 +52,7 @@ export default function Admin() {
       filterAll: "Semua Tipe",
       filterIn: "Masuk",
       filterOut: "Pulang",
+      filterJabatanAll: "Semua Jabatan",
       totalExport: "Total Karyawan Unik"
     },
     CN: {
@@ -66,6 +69,7 @@ export default function Admin() {
       members: "成员",
       colName: "姓名",
       colShift: "班次",
+      colJabatan: "职位",
       colOpt: "操作",
       historyTitle: "出勤记录",
       searchPlace: "搜索姓名...",
@@ -85,9 +89,12 @@ export default function Admin() {
       filterAll: "所有类型",
       filterIn: "上班签到",
       filterOut: "下班签退",
+      filterJabatanAll: "所有职位",
       totalExport: "唯一员工总数"
     }
   };
+
+  const daftarJabatan = ["HRD", "Supervisor", "Admin", "Penjahit", "Helper", "Picker", "Packing"];
 
   useEffect(() => { fetchData(); }, []);
 
@@ -103,8 +110,10 @@ export default function Admin() {
   const addKaryawan = async (e: any) => {
     e.preventDefault();
     setIsSubmitting(true);
-    const { nama, pin, shift } = e.target.elements;
-    const { error } = await supabase.from('karyawan').insert([{ nama: nama.value, pin: pin.value, shift: shift.value }]);
+    const { nama, pin, shift, jabatan } = e.target.elements;
+    const { error } = await supabase.from('karyawan').insert([
+      { nama: nama.value, pin: pin.value, shift: shift.value, jabatan: jabatan.value }
+    ]);
     if (!error) {
       Swal.fire({ title: lang === 'ID' ? 'BERHASIL!' : '成功！', text: `${nama.value} ${t[lang].successAdd}`, icon: 'success', confirmButtonColor: '#4f46e5', borderRadius: '2rem' });
       e.target.reset();
@@ -135,17 +144,24 @@ export default function Admin() {
     }
   };
 
+  // Logika filter gabungan (Tipe + Jabatan + Search + Date)
   const filteredLogs = logs.filter(log => {
     const matchesDate = filterDate ? log.created_at.startsWith(filterDate) : true;
     const matchesSearch = log.nama.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = filterType === 'ALL' ? true : log.tipe.toUpperCase() === filterType;
-    return matchesDate && matchesSearch && matchesType;
+    
+    // Cari jabatan karyawan dari data logs (asumsi tabel logs_absensi punya kolom jabatan)
+    // Jika kolom jabatan hanya ada di tabel karyawan, gunakan log.jabatan (pastikan saat insert log, jabatan ikut disimpan)
+    const matchesJabatan = filterJabatan === 'ALL' ? true : log.jabatan === filterJabatan;
+    
+    return matchesDate && matchesSearch && matchesType && matchesJabatan;
   });
 
   const exportToCSV = () => {
-    const headers = [t[lang].colName, t[lang].colTime.split(' ')[2], t[lang].colTime.split(' ')[0], t[lang].colStatus, 'Tanggal'];
+    const headers = [t[lang].colName, t[lang].colJabatan, t[lang].colTime.split(' ')[2], t[lang].colTime.split(' ')[0], t[lang].colStatus, 'Tanggal'];
     const csvData = filteredLogs.map(log => [
       log.nama, 
+      log.jabatan || '-',
       log.tipe, 
       log.jam, 
       log.status,
@@ -197,6 +213,13 @@ export default function Admin() {
             <form onSubmit={addKaryawan} className="space-y-4">
               <input name="nama" placeholder={t[lang].namePlace} className="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-indigo-100 transition-all" required />
               <input name="pin" placeholder={t[lang].pinPlace} maxLength={4} className="w-full bg-white border border-slate-100 p-4 rounded-2xl text-sm font-mono tracking-widest outline-none focus:ring-2 focus:ring-indigo-100 transition-all" required />
+              
+              {/* Dropdown Jabatan */}
+              <select name="jabatan" className="w-full bg-white border border-slate-100 p-4 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-indigo-100" required>
+                <option value="" disabled selected>{t[lang].colJabatan}</option>
+                {daftarJabatan.map(j => <option key={j} value={j}>{j}</option>)}
+              </select>
+
               <select name="shift" className="w-full bg-white border border-slate-100 p-4 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-indigo-100">
                 <option value="Siang">{t[lang].shiftSiang}</option>
                 <option value="Malam">{t[lang].shiftMalam}</option>
@@ -219,6 +242,7 @@ export default function Admin() {
                 <thead className="sticky top-0 bg-white z-10">
                   <tr className="text-[9px] text-slate-400 font-black uppercase tracking-widest">
                     <th className="pb-4 pl-4">{t[lang].colName}</th>
+                    <th className="pb-4 text-center">{t[lang].colJabatan}</th>
                     <th className="pb-4 text-center">PIN</th>
                     <th className="pb-4 text-center">{t[lang].colShift}</th>
                     <th className="pb-4 text-right pr-4">{t[lang].colOpt}</th>
@@ -228,6 +252,7 @@ export default function Admin() {
                   {karyawan.map(k => (
                     <tr key={k.id} className="bg-slate-50/50 hover:bg-slate-50 transition-all">
                       <td className="py-4 pl-4 rounded-l-2xl font-black text-xs uppercase italic text-slate-700">{k.nama}</td>
+                      <td className="py-4 text-center text-[10px] font-bold text-slate-500 uppercase">{k.jabatan || '-'}</td>
                       <td className="py-4 text-center font-mono text-indigo-600 font-bold tracking-widest text-xs">{k.pin}</td>
                       <td className="py-4 text-center"><span className="text-[9px] font-bold bg-white border border-slate-200 px-2 py-1 rounded-lg uppercase">{k.shift}</span></td>
                       <td className="py-4 text-right pr-4 rounded-r-2xl">
@@ -251,6 +276,15 @@ export default function Admin() {
              </div>
              
              <div className="flex flex-wrap items-center gap-3">
+               {/* Filter Jabatan Baru */}
+               <select 
+                onChange={(e) => setFilterJabatan(e.target.value)}
+                className="bg-white border border-slate-200 text-[10px] font-bold p-2 rounded-xl outline-none focus:ring-2 focus:ring-indigo-100"
+               >
+                 <option value="ALL">{t[lang].filterJabatanAll}</option>
+                 {daftarJabatan.map(j => <option key={j} value={j}>{j}</option>)}
+               </select>
+
                <select 
                 onChange={(e) => setFilterType(e.target.value)}
                 className="bg-white border border-slate-200 text-[10px] font-bold p-2 rounded-xl outline-none focus:ring-2 focus:ring-indigo-100"
@@ -285,7 +319,6 @@ export default function Admin() {
                   <tr key={log.id} className="hover:bg-slate-50/80 transition-all group">
                     <td className="p-8 font-black text-slate-300 text-xs">{(index + 1).toString().padStart(2, '0')}</td>
                     <td className="p-6">
-                      {/* --- BAGIAN FOTO YANG DIPERBAIKI --- */}
                       <div className="w-14 h-14 rounded-2xl bg-slate-100 border-2 border-white shadow-sm overflow-hidden transition-transform group-hover:scale-105 flex items-center justify-center">
                         {log.foto_url ? (
                           <img 
@@ -304,10 +337,11 @@ export default function Admin() {
                           </div>
                         )}
                       </div>
-                      {/* --- END BAGIAN FOTO --- */}
                     </td>
                     <td className="p-8">
                         <p className="text-slate-900 font-black uppercase text-xs tracking-tight">{log.nama}</p>
+                        {/* Menampilkan jabatan di bawah nama */}
+                        <p className="text-[8px] text-indigo-500 font-black uppercase tracking-widest">{log.jabatan || 'No Job'}</p>
                         <p className="text-[9px] text-slate-400 font-bold uppercase mt-1 tracking-tighter italic">
                           {new Date(log.created_at).toLocaleDateString(lang === 'ID' ? 'id-ID' : 'zh-CN', { weekday: 'long', day: 'numeric', month: 'long' })}
                         </p>
