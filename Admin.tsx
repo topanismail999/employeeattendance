@@ -135,7 +135,6 @@ export default function Admin() {
     }
   };
 
-  // Logika Filter yang sudah disinkronkan dengan UI
   const filteredLogs = logs.filter(log => {
     const matchesDate = filterDate ? log.created_at.startsWith(filterDate) : true;
     const matchesSearch = log.nama.toLowerCase().includes(searchTerm.toLowerCase());
@@ -153,13 +152,12 @@ export default function Admin() {
       new Date(log.created_at).toLocaleDateString(lang === 'ID' ? 'id-ID' : 'zh-CN')
     ]);
 
-    // Menghitung jumlah karyawan unik dari hasil filter
     const uniqueEmployees = new Set(filteredLogs.map(log => log.nama)).size;
 
     let csvContent = "data:text/csv;charset=utf-8," 
       + headers.join(",") + "\n" 
       + csvData.map(e => e.join(",")).join("\n")
-      + `\n\n${t[lang].totalExport},${uniqueEmployees}`; // Menambahkan total di akhir file
+      + `\n\n${t[lang].totalExport},${uniqueEmployees}`;
 
     const link = document.createElement("a");
     link.setAttribute("href", encodeURI(csvContent));
@@ -253,7 +251,6 @@ export default function Admin() {
              </div>
              
              <div className="flex flex-wrap items-center gap-3">
-               {/* Filter Tipe Masuk/Pulang */}
                <select 
                 onChange={(e) => setFilterType(e.target.value)}
                 className="bg-white border border-slate-200 text-[10px] font-bold p-2 rounded-xl outline-none focus:ring-2 focus:ring-indigo-100"
@@ -288,9 +285,26 @@ export default function Admin() {
                   <tr key={log.id} className="hover:bg-slate-50/80 transition-all group">
                     <td className="p-8 font-black text-slate-300 text-xs">{(index + 1).toString().padStart(2, '0')}</td>
                     <td className="p-6">
-                      <div className="w-14 h-14 rounded-2xl bg-slate-200 border-2 border-white shadow-sm overflow-hidden transition-transform group-hover:scale-105">
-                        {log.foto_url ? <img src={log.foto_url} className="w-full h-full object-cover" alt="Log" /> : <div className="w-full h-full flex items-center justify-center text-[8px] text-slate-400">No Image</div>}
+                      {/* --- BAGIAN FOTO YANG DIPERBAIKI --- */}
+                      <div className="w-14 h-14 rounded-2xl bg-slate-100 border-2 border-white shadow-sm overflow-hidden transition-transform group-hover:scale-105 flex items-center justify-center">
+                        {log.foto_url ? (
+                          <img 
+                            src={`${log.foto_url}?t=${new Date(log.created_at).getTime()}`} 
+                            className="w-full h-full object-cover" 
+                            alt="Log" 
+                            onError={(e: any) => {
+                              e.target.onerror = null;
+                              e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(log.nama)}&background=EEF2FF&color=4F46E5&bold=true`;
+                            }}
+                          />
+                        ) : (
+                          <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50">
+                            <svg className="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                            <span className="text-[7px] text-slate-400 uppercase font-black">No Pic</span>
+                          </div>
+                        )}
                       </div>
+                      {/* --- END BAGIAN FOTO --- */}
                     </td>
                     <td className="p-8">
                         <p className="text-slate-900 font-black uppercase text-xs tracking-tight">{log.nama}</p>
