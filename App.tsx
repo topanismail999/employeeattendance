@@ -7,18 +7,11 @@ declare var Swal: any;
 
 const AttendanceForm = () => {
   const [pin, setPin] = useState('');
-  const [settings, setSettings] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Aktifkan Kamera saat halaman dibuka
   useEffect(() => {
-    const fetchSettings = async () => {
-      const { data } = await supabase.from('settings').select('*').single();
-      setSettings(data);
-    };
-    fetchSettings();
     startVideo();
   }, []);
 
@@ -33,7 +26,7 @@ const AttendanceForm = () => {
     
     setLoading(true);
     
-    // 1. Cek Karyawan
+    // 1. Ambil Data Karyawan (Termasuk Jabatan dan Shift untuk Sinkronisasi)
     const { data: karyawan, error } = await supabase.from('karyawan').select('*').eq('pin', pin).single();
     if (error || !karyawan) {
       setLoading(false);
@@ -63,25 +56,66 @@ const AttendanceForm = () => {
     }
 
     const jamSekarang = new Date().toLocaleTimeString('it-IT', { hour12: false }).slice(0, 5);
-    let statusLog = 'On Time';
-    let pesanAlert = 'Absensi berhasil dicatat!';
+    const shiftKaryawan = karyawan.shift || 'Siang';
     
-    if (tipe === 'MASUK' && jamSekarang > (settings?.jam_masuk_siang || '08:00')) {
-      statusLog = 'Terlambat';
-      pesanAlert = 'Anda terlambat! Tetap semangat, hari ini milik Anda! 🔥';
-    } else if (tipe === 'PULANG' && jamSekarang < (settings?.jam_pulang_siang || '17:00')) {
-      statusLog = 'Pulang Cepat';
-      pesanAlert = 'Belum jam pulang, tapi kerja keras Anda luar biasa!';
+    // LOGIKA SINKRONISASI STATUS (Sesuai Admin.tsx)
+    let statusLog = ''; 
+    let pesanAlert = `Halo ${karyawan.nama}, absen ${tipe.toLowerCase()} berhasil dicatat!`;
+    let iconAlert = 'success';
+
+    if (tipe === 'MASUK') {
+      // Shift Siang: > 08:00 | Shift Malam: > 17:15
+      const limitMasuk = shiftKaryawan === 'Siang' ? '08:00' : '17:15';
+      if (jamSekarang > limitMasuk) {
+        statusLog = 'Terlambat';
+        pesanAlert = `Waduh ${karyawan.nama}, Anda Terlambat! Tetap semangat mengejar hari! 🔥`;
+        iconAlert = 'warning';
+      }
+    } else {
+      // LOGIKA PULANG (PULANG CEPAT)
+      if (shiftKaryawan === 'Siang') {
+        if (jamSekarang < '17:00') {
+          statusLog = 'Terlalu Cepat Pulang';
+          pesanAlert = 'Belum jam 17:00! Pastikan pekerjaan Anda sudah selesai sebelum pulang.';
+          iconAlert = 'warning';
+        }
+      } else {
+        // Shift Malam (Selesai 02:15)
+        // Jika pulang antara jam 17:15 - 23:59 atau sebelum 02:15 pagi
+        const isBeforeMidnight = jamSekarang >= '17:15' && jamSekarang <= '23:59';
+        const isAfterMidnightButEarly = jamSekarang < '02:15';
+        
+        if (isBeforeMidnight || isAfterMidnightButEarly) {
+          statusLog = 'Terlalu Cepat Pulang';
+          pesanAlert = 'Belum waktunya ganti shift! Gunakan waktu istirahat dengan bijak.';
+          iconAlert = 'warning';
+        }
+      }
     }
 
-    // 3. Simpan Log ke DB
+    // 3. Simpan Log ke DB (Menyimpan Shift & Jabatan agar Admin tidak perlu join table manual)
     const { error: errInsert } = await supabase.from('logs_absensi').insert([{
-      karyawan_id: karyawan.id, nama: karyawan.nama, tipe, jam: jamSekarang, status: statusLog, foto_url: fotoUrl 
+      karyawan_id: karyawan.id, 
+      nama: karyawan.nama, 
+      jabatan: karyawan.jabatan,
+      shift: shiftKaryawan,
+      tipe, 
+      jam: jamSekarang, 
+      status: statusLog, 
+      foto_url: fotoUrl 
     }]);
 
     if (!errInsert) {
-      Swal.fire({ title: 'BERHASIL!', text: pesanAlert, icon: 'success', background: '#fff', confirmButtonColor: '#4f46e5' });
+      Swal.fire({ 
+        title: statusLog ? statusLog.toUpperCase() : 'BERHASIL!', 
+        text: pesanAlert, 
+        icon: iconAlert, 
+        background: '#fff', 
+        confirmButtonColor: statusLog ? '#f43f5e' : '#4f46e5' 
+      });
       setPin('');
+    } else {
+      Swal.fire({ icon: 'error', title: 'GAGAL', text: 'Terjadi kesalahan sistem.' });
     }
     setLoading(false);
   };
