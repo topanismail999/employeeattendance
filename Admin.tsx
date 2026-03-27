@@ -10,7 +10,7 @@ export default function Admin() {
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [filterDate, setFilterDate] = useState('');
-  const [filterDateEnd, setFilterDateEnd] = useState(''); // New: Date Range End
+  const [filterDateEnd, setFilterDateEnd] = useState(''); 
   const [searchTerm, setSearchTerm] = useState('');
   const [searchKaryawan, setSearchKaryawan] = useState('');
   const [filterType, setFilterType] = useState('ALL');
@@ -143,31 +143,36 @@ export default function Admin() {
     return found ? found.label : id;
   };
 
-  // Logic: Re-evaluate Status for Display (Fixes Night Shift 17:15 - 02:15)
+  // REVISED LOGIC: Sinkronisasi Shift Siang & Malam
   const getStatusLabel = (log: any) => {
     const time = log.jam; 
     const type = log.tipe.toUpperCase();
     const shift = log.shift || "Siang";
 
     if (type === 'MASUK') {
-      // Shift Siang: 08:00, Shift Malam: 17:15
+      // Shift Siang: 08:00 | Shift Malam: 17:15
       const limit = shift === 'Siang' ? '08:00' : '17:15';
       return time <= limit ? t[lang].s_ontime : t[lang].s_late;
     } else {
+      // LOGIKA PULANG (CHECK-OUT)
       if (shift === 'Siang') {
         const outLimit = '17:00';
-        const otLimit = '18:00';
+        const otLimit = '18:00'; // Lembur jika > +1 jam
+        
         if (time >= otLimit) return t[lang].s_overtime;
-        return time < outLimit ? t[lang].s_early : t[lang].s_ontime;
+        if (time < outLimit) return t[lang].s_early;
+        return t[lang].s_ontime;
       } else {
         // Shift Malam: 17:15 - 02:15
         const outLimit = '02:15';
-        const otLimit = '03:15'; // Overtime starts after 03:15
+        const otLimit = '03:15'; // Lembur jika > +1 jam (02:15 + 1 jam)
 
-        // Case: Checkout between 17:15 and 23:59 (Early)
+        // Case 1: Pulang di hari yang sama (sebelum tengah malam)
+        // Karena shift malam selesai jam 02:15 pagi, 
+        // jam 17:15 s/d 23:59 pasti dihitung Pulang Awal.
         if (time >= '17:15' && time <= '23:59') return t[lang].s_early;
-        
-        // Case: Checkout after midnight
+
+        // Case 2: Pulang setelah tengah malam (00:00 ke atas)
         if (time < outLimit) return t[lang].s_early;
         if (time >= outLimit && time < otLimit) return t[lang].s_ontime;
         if (time >= otLimit && time < '12:00') return t[lang].s_overtime;
@@ -297,11 +302,11 @@ export default function Admin() {
           <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 lg:col-span-2 shadow-sm relative overflow-hidden flex flex-col h-[500px]">
             <div className="absolute top-0 left-0 w-1 h-full bg-indigo-400"></div>
             <div className="flex justify-between items-center mb-6">
-               <div className="flex flex-col">
-                <h2 className="text-xl font-black uppercase italic text-slate-900">{t[lang].listTitle}</h2>
-                <span className="text-[10px] font-black text-indigo-400 uppercase italic">{karyawan.length} {t[lang].members}</span>
-               </div>
-               <input type="text" placeholder={t[lang].searchPlace} onChange={(e) => setSearchKaryawan(e.target.value)} className="bg-slate-50 border border-slate-100 text-[10px] font-bold p-2 px-4 rounded-xl outline-none focus:ring-2 focus:ring-indigo-100 w-48 shadow-inner" />
+                <div className="flex flex-col">
+                 <h2 className="text-xl font-black uppercase italic text-slate-900">{t[lang].listTitle}</h2>
+                 <span className="text-[10px] font-black text-indigo-400 uppercase italic">{karyawan.length} {t[lang].members}</span>
+                </div>
+                <input type="text" placeholder={t[lang].searchPlace} onChange={(e) => setSearchKaryawan(e.target.value)} className="bg-slate-50 border border-slate-100 text-[10px] font-bold p-2 px-4 rounded-xl outline-none focus:ring-2 focus:ring-indigo-100 w-48 shadow-inner" />
             </div>
             <div className="overflow-y-auto pr-2 custom-scrollbar">
               <table className="w-full text-left border-separate border-spacing-y-3">
