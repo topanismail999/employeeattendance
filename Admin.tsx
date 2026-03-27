@@ -12,8 +12,7 @@ export default function Admin() {
   const [filterDate, setFilterDate] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('ALL');
-  // State baru untuk filter jabatan
-  const [filterJabatan, setFilterJabatan] = useState('ALL');
+  const [filterJabatan, setFilterJabatan] = useState('ALL'); // State Filter Jabatan
   
   const [lang, setLang] = useState<'ID' | 'CN'>('ID');
 
@@ -144,14 +143,10 @@ export default function Admin() {
     }
   };
 
-  // Logika filter gabungan (Tipe + Jabatan + Search + Date)
   const filteredLogs = logs.filter(log => {
     const matchesDate = filterDate ? log.created_at.startsWith(filterDate) : true;
     const matchesSearch = log.nama.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = filterType === 'ALL' ? true : log.tipe.toUpperCase() === filterType;
-    
-    // Cari jabatan karyawan dari data logs (asumsi tabel logs_absensi punya kolom jabatan)
-    // Jika kolom jabatan hanya ada di tabel karyawan, gunakan log.jabatan (pastikan saat insert log, jabatan ikut disimpan)
     const matchesJabatan = filterJabatan === 'ALL' ? true : log.jabatan === filterJabatan;
     
     return matchesDate && matchesSearch && matchesType && matchesJabatan;
@@ -214,7 +209,6 @@ export default function Admin() {
               <input name="nama" placeholder={t[lang].namePlace} className="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-indigo-100 transition-all" required />
               <input name="pin" placeholder={t[lang].pinPlace} maxLength={4} className="w-full bg-white border border-slate-100 p-4 rounded-2xl text-sm font-mono tracking-widest outline-none focus:ring-2 focus:ring-indigo-100 transition-all" required />
               
-              {/* Dropdown Jabatan */}
               <select name="jabatan" className="w-full bg-white border border-slate-100 p-4 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-indigo-100" required>
                 <option value="" disabled selected>{t[lang].colJabatan}</option>
                 {daftarJabatan.map(j => <option key={j} value={j}>{j}</option>)}
@@ -276,7 +270,6 @@ export default function Admin() {
              </div>
              
              <div className="flex flex-wrap items-center gap-3">
-               {/* Filter Jabatan Baru */}
                <select 
                 onChange={(e) => setFilterJabatan(e.target.value)}
                 className="bg-white border border-slate-200 text-[10px] font-bold p-2 rounded-xl outline-none focus:ring-2 focus:ring-indigo-100"
@@ -340,7 +333,6 @@ export default function Admin() {
                     </td>
                     <td className="p-8">
                         <p className="text-slate-900 font-black uppercase text-xs tracking-tight">{log.nama}</p>
-                        {/* Menampilkan jabatan di bawah nama */}
                         <p className="text-[8px] text-indigo-500 font-black uppercase tracking-widest">{log.jabatan || 'No Job'}</p>
                         <p className="text-[9px] text-slate-400 font-bold uppercase mt-1 tracking-tighter italic">
                           {new Date(log.created_at).toLocaleDateString(lang === 'ID' ? 'id-ID' : 'zh-CN', { weekday: 'long', day: 'numeric', month: 'long' })}
