@@ -55,9 +55,10 @@ export default function Admin() {
       filterOut: "Pulang",
       filterJabatanAll: "Semua Jabatan",
       totalExport: "Total Karyawan Unik",
-      s_ontime: "Tepat Waktu",
+      s_ontime: "", // Dikosongkan sesuai permintaan
       s_late: "Terlambat",
-      s_early: "Pulang Awal",
+      s_early: "Terlalu Cepat Pulang",
+      s_overtime: "", // Dikosongkan sesuai permintaan
       j_hrd: "HRD",
       j_spv: "Supervisor",
       j_adm: "Admin",
@@ -102,9 +103,10 @@ export default function Admin() {
       filterOut: "下班签退",
       filterJabatanAll: "所有职位",
       totalExport: "唯一员工总数",
-      s_ontime: "准时",
+      s_ontime: "",
       s_late: "迟到",
-      s_early: "早退",
+      s_early: "早退 (太快回家)",
+      s_overtime: "",
       j_hrd: "人力资源 (HRD)",
       j_spv: "主管 (Supervisor)",
       j_adm: "行政 (Admin)",
@@ -141,32 +143,28 @@ export default function Admin() {
     return found ? found.label : id;
   };
 
-  // LOGIKA STATUS: Hanya Terlambat dan Pulang Awal
+  // IMPLEMENTASI BARU: Hanya Terlambat dan Terlalu Cepat Pulang
   const getStatusLabel = (log: any) => {
     const time = log.jam; 
     const type = log.tipe.toUpperCase();
     const shift = log.shift || "Siang";
 
     if (type === 'MASUK') {
-      // Shift Siang: 08:00 | Shift Malam: 17:15
       const limit = shift === 'Siang' ? '08:00' : '17:15';
-      return time <= limit ? t[lang].s_ontime : t[lang].s_late;
+      return time > limit ? t[lang].s_late : "";
     } else {
       // LOGIKA PULANG (CHECK-OUT)
       if (shift === 'Siang') {
         const outLimit = '17:00';
-        // Hanya cek jika pulang lebih awal dari 17:00
-        return time < outLimit ? t[lang].s_early : t[lang].s_ontime;
+        return time < outLimit ? t[lang].s_early : "";
       } else {
-        // Shift Malam selesai jam 02:15
-        const outLimit = '02:15';
-        
-        // Jika pulang sebelum jam 12 malam
+        // Shift Malam: Batas pulang normal 02:15
+        // Jika jam antara 17:15 s/d 23:59 (masih di hari yang sama dengan masuk)
         if (time >= '17:15' && time <= '23:59') return t[lang].s_early;
-        // Jika pulang setelah jam 12 malam tapi sebelum 02:15
-        if (time < outLimit) return t[lang].s_early;
+        // Jika sudah lewat tengah malam tapi sebelum jam 02:15
+        if (time < '02:15') return t[lang].s_early;
         
-        return t[lang].s_ontime;
+        return "";
       }
     }
   };
@@ -376,7 +374,7 @@ export default function Admin() {
               <tbody className="divide-y divide-slate-50 italic">
                 {filteredLogs.map((log, index) => {
                   const statusLabel = getStatusLabel(log);
-                  const isBadStatus = statusLabel === t[lang].s_late || statusLabel === t[lang].s_early;
+                  const isNegative = statusLabel !== "";
 
                   return (
                     <tr key={log.id} className="hover:bg-slate-50/80 transition-all group">
@@ -406,11 +404,11 @@ export default function Admin() {
                         </div>
                       </td>
                       <td className="p-8 text-center">
-                        <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-[0.1em] inline-block shadow-sm 
-                          ${isBadStatus ? 'bg-rose-50 text-rose-600 border border-rose-100' : 
-                            'bg-emerald-50 text-emerald-600 border border-emerald-100'}`}>
-                          {statusLabel}
-                        </span>
+                        {statusLabel && (
+                          <span className="px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-[0.1em] inline-block shadow-sm bg-rose-50 text-rose-600 border border-rose-100">
+                            {statusLabel}
+                          </span>
+                        )}
                       </td>
                       <td className="p-8 text-right">
                           <button onClick={() => deleteData('logs_absensi', log.id, `${log.nama}`)} className="bg-rose-50 text-rose-400 hover:bg-rose-500 hover:text-white p-2 rounded-xl transition-all"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
