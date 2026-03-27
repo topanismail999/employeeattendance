@@ -11,7 +11,8 @@ export default function Admin() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [filterDate, setFilterDate] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState('All'); // State Filter Baru
+  // Filter Tipe (Masuk/Pulang)
+  const [filterType, setFilterType] = useState('ALL');
   
   const [lang, setLang] = useState<'ID' | 'CN'>('ID');
 
@@ -33,9 +34,7 @@ export default function Admin() {
       colOpt: "Opsi",
       historyTitle: "Riwayat Absensi",
       searchPlace: "Cari Nama...",
-      filterAll: "Semua Tipe",
-      filterIn: "Masuk",
-      filterOut: "Pulang",
+      colNo: "No",
       colVisual: "Visual",
       colInfo: "Informasi",
       colTime: "Waktu & Tipe",
@@ -48,7 +47,10 @@ export default function Admin() {
       successAdd: "Berhasil terdaftar",
       deleted: "Terhapus!",
       refresh: "Segarkan",
-      csvTotal: "Total Karyawan Unik"
+      filterAll: "Semua Tipe",
+      filterIn: "Masuk",
+      filterOut: "Pulang",
+      totalExport: "Total Karyawan Unik"
     },
     CN: {
       back: "后台",
@@ -67,9 +69,7 @@ export default function Admin() {
       colOpt: "操作",
       historyTitle: "出勤记录",
       searchPlace: "搜索姓名...",
-      filterAll: "所有类型",
-      filterIn: "上班",
-      filterOut: "下班",
+      colNo: "编号",
       colVisual: "照片",
       colInfo: "员工信息",
       colTime: "时间与类型",
@@ -82,7 +82,10 @@ export default function Admin() {
       successAdd: "注册成功",
       deleted: "已删除！",
       refresh: "刷新",
-      csvTotal: "唯一员工总数"
+      filterAll: "所有类型",
+      filterIn: "上班签到",
+      filterOut: "下班签退",
+      totalExport: "唯一员工总数"
     }
   };
 
@@ -102,15 +105,8 @@ export default function Admin() {
     setIsSubmitting(true);
     const { nama, pin, shift } = e.target.elements;
     const { error } = await supabase.from('karyawan').insert([{ nama: nama.value, pin: pin.value, shift: shift.value }]);
-
     if (!error) {
-      Swal.fire({
-        title: lang === 'ID' ? 'BERHASIL!' : '成功！',
-        text: `${nama.value} ${t[lang].successAdd}`,
-        icon: 'success',
-        confirmButtonColor: '#4f46e5',
-        borderRadius: '2rem',
-      });
+      Swal.fire({ title: lang === 'ID' ? 'BERHASIL!' : '成功！', text: `${nama.value} ${t[lang].successAdd}`, icon: 'success', confirmButtonColor: '#4f46e5', borderRadius: '2rem' });
       e.target.reset();
       fetchData();
     } else {
@@ -130,7 +126,6 @@ export default function Admin() {
       confirmButtonText: t[lang].confirmBtn,
       borderRadius: '1.5rem'
     });
-
     if (result.isConfirmed) {
       const { error } = await supabase.from(table).delete().eq('id', id);
       if (!error) {
@@ -140,23 +135,31 @@ export default function Admin() {
     }
   };
 
+  // Logika Filter yang sudah disinkronkan dengan UI
+  const filteredLogs = logs.filter(log => {
+    const matchesDate = filterDate ? log.created_at.startsWith(filterDate) : true;
+    const matchesSearch = log.nama.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesType = filterType === 'ALL' ? true : log.tipe.toUpperCase() === filterType;
+    return matchesDate && matchesSearch && matchesType;
+  });
+
   const exportToCSV = () => {
-    // Header sesuai bahasa
-    const headers = [t[lang].colName, 'Type', 'Time', 'Status', 'Date'];
-    
+    const headers = [t[lang].colName, t[lang].colTime.split(' ')[2], t[lang].colTime.split(' ')[0], t[lang].colStatus, 'Tanggal'];
     const csvData = filteredLogs.map(log => [
-      log.nama, log.tipe, log.jam, log.status,
-      new Date(log.created_at).toLocaleDateString()
+      log.nama, 
+      log.tipe, 
+      log.jam, 
+      log.status,
+      new Date(log.created_at).toLocaleDateString(lang === 'ID' ? 'id-ID' : 'zh-CN')
     ]);
 
-    // Hitung total karyawan unik dalam filter saat ini
-    const uniqueNames = new Set(filteredLogs.map(log => log.nama));
-    const totalRow = ["", "", "", t[lang].csvTotal, uniqueNames.size];
+    // Menghitung jumlah karyawan unik dari hasil filter
+    const uniqueEmployees = new Set(filteredLogs.map(log => log.nama)).size;
 
     let csvContent = "data:text/csv;charset=utf-8," 
       + headers.join(",") + "\n" 
       + csvData.map(e => e.join(",")).join("\n")
-      + "\n\n" + totalRow.join(",");
+      + `\n\n${t[lang].totalExport},${uniqueEmployees}`; // Menambahkan total di akhir file
 
     const link = document.createElement("a");
     link.setAttribute("href", encodeURI(csvContent));
@@ -164,13 +167,6 @@ export default function Admin() {
     document.body.appendChild(link);
     link.click();
   };
-
-  const filteredLogs = logs.filter(log => {
-    const matchesDate = filterDate ? log.created_at.startsWith(filterDate) : true;
-    const matchesSearch = log.nama.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesType = filterType === 'All' ? true : log.tipe === filterType;
-    return matchesDate && matchesSearch && matchesType;
-  });
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-800 p-6 md:p-12 font-sans selection:bg-indigo-100">
@@ -237,7 +233,7 @@ export default function Admin() {
                       <td className="py-4 text-center font-mono text-indigo-600 font-bold tracking-widest text-xs">{k.pin}</td>
                       <td className="py-4 text-center"><span className="text-[9px] font-bold bg-white border border-slate-200 px-2 py-1 rounded-lg uppercase">{k.shift}</span></td>
                       <td className="py-4 text-right pr-4 rounded-r-2xl">
-                        <button onClick={() => deleteData('karyawan', k.id, k.nama)} className="text-rose-400 hover:text-rose-600 p-2"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                        <button onClick={() => deleteData('karyawan', k.id, k.nama)} className="text-rose-400 hover:text-rose-600 p-2 transition-all active:scale-90"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                       </td>
                     </tr>
                   ))}
@@ -249,21 +245,24 @@ export default function Admin() {
 
         {/* TABEL LOG */}
         <div className="bg-white rounded-[3rem] border border-slate-100 overflow-hidden shadow-sm">
-          <div className="p-8 border-b border-slate-50 bg-slate-50/30 flex flex-col md:flex-row justify-between items-center gap-6">
+          <div className="p-8 border-b border-slate-50 bg-slate-50/30 flex flex-col xl:flex-row justify-between items-center gap-6">
              <div className="flex items-center gap-4">
                 <h3 className="font-black text-xs uppercase tracking-[0.3em] text-slate-500 italic">{t[lang].historyTitle}</h3>
+                <span className="bg-indigo-600 text-white text-[10px] font-black px-3 py-1 rounded-lg">{filteredLogs.length} Data</span>
                 <button onClick={exportToCSV} className="bg-emerald-500 hover:bg-emerald-600 text-white text-[9px] font-black px-4 py-2 rounded-xl uppercase tracking-widest transition-all shadow-lg shadow-emerald-100">Export CSV</button>
              </div>
              
-             {/* GROUP FILTER */}
              <div className="flex flex-wrap items-center gap-3">
-               {/* Filter Tipe */}
-               <select onChange={(e) => setFilterType(e.target.value)} className="bg-white border border-slate-200 text-[10px] font-bold p-2 rounded-xl outline-none focus:ring-2 focus:ring-indigo-100">
-                  <option value="All">{t[lang].filterAll}</option>
-                  <option value="Masuk">{t[lang].filterIn}</option>
-                  <option value="Pulang">{t[lang].filterOut}</option>
+               {/* Filter Tipe Masuk/Pulang */}
+               <select 
+                onChange={(e) => setFilterType(e.target.value)}
+                className="bg-white border border-slate-200 text-[10px] font-bold p-2 rounded-xl outline-none focus:ring-2 focus:ring-indigo-100"
+               >
+                 <option value="ALL">{t[lang].filterAll}</option>
+                 <option value="MASUK">{t[lang].filterIn}</option>
+                 <option value="PULANG">{t[lang].filterOut}</option>
                </select>
-               
+
                <input type="date" onChange={(e) => setFilterDate(e.target.value)} className="bg-white border border-slate-200 text-[10px] font-bold p-2 rounded-xl outline-none focus:ring-2 focus:ring-indigo-100" />
                <input type="text" placeholder={t[lang].searchPlace} onChange={(e) => setSearchTerm(e.target.value)} className="bg-white border border-slate-200 text-[10px] font-bold p-2 px-4 rounded-xl outline-none focus:ring-2 focus:ring-indigo-100 w-40" />
                <button onClick={fetchData} className="text-[9px] font-black uppercase text-indigo-600 hover:text-indigo-800 tracking-[0.2em] flex items-center gap-2 ml-2">
@@ -276,6 +275,7 @@ export default function Admin() {
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50 text-slate-400 uppercase text-[9px] tracking-[0.3em] font-black">
                 <tr>
+                  <th className="p-8 w-16">{t[lang].colNo}</th>
                   <th className="p-8">{t[lang].colVisual}</th>
                   <th className="p-8">{t[lang].colInfo}</th>
                   <th className="p-8">{t[lang].colTime}</th>
@@ -284,8 +284,9 @@ export default function Admin() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 italic">
-                {filteredLogs.map(log => (
+                {filteredLogs.map((log, index) => (
                   <tr key={log.id} className="hover:bg-slate-50/80 transition-all group">
+                    <td className="p-8 font-black text-slate-300 text-xs">{(index + 1).toString().padStart(2, '0')}</td>
                     <td className="p-6">
                       <div className="w-14 h-14 rounded-2xl bg-slate-200 border-2 border-white shadow-sm overflow-hidden transition-transform group-hover:scale-105">
                         {log.foto_url ? <img src={log.foto_url} className="w-full h-full object-cover" alt="Log" /> : <div className="w-full h-full flex items-center justify-center text-[8px] text-slate-400">No Image</div>}
@@ -300,7 +301,7 @@ export default function Admin() {
                     <td className="p-8">
                       <div className="flex flex-col">
                         <span className="text-indigo-600 font-black text-lg font-mono tracking-tighter">{log.jam}</span>
-                        <span className="text-[8px] text-slate-400 uppercase font-black tracking-widest">{log.tipe}</span>
+                        <span className={`text-[8px] uppercase font-black tracking-widest ${log.tipe.toUpperCase() === 'MASUK' ? 'text-emerald-500' : 'text-orange-500'}`}>{log.tipe}</span>
                       </div>
                     </td>
                     <td className="p-8 text-center">
