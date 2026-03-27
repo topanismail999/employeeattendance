@@ -58,7 +58,6 @@ export default function Admin() {
       s_ontime: "Tepat Waktu",
       s_late: "Terlambat",
       s_early: "Pulang Awal",
-      s_overtime: "Lembur",
       j_hrd: "HRD",
       j_spv: "Supervisor",
       j_adm: "Admin",
@@ -106,7 +105,6 @@ export default function Admin() {
       s_ontime: "准时",
       s_late: "迟到",
       s_early: "早退",
-      s_overtime: "加班",
       j_hrd: "人力资源 (HRD)",
       j_spv: "主管 (Supervisor)",
       j_adm: "行政 (Admin)",
@@ -143,7 +141,7 @@ export default function Admin() {
     return found ? found.label : id;
   };
 
-  // REVISED LOGIC: Sinkronisasi Shift Siang & Malam
+  // LOGIKA STATUS: Hanya Terlambat dan Pulang Awal
   const getStatusLabel = (log: any) => {
     const time = log.jam; 
     const type = log.tipe.toUpperCase();
@@ -157,25 +155,16 @@ export default function Admin() {
       // LOGIKA PULANG (CHECK-OUT)
       if (shift === 'Siang') {
         const outLimit = '17:00';
-        const otLimit = '18:00'; // Lembur jika > +1 jam
-        
-        if (time >= otLimit) return t[lang].s_overtime;
-        if (time < outLimit) return t[lang].s_early;
-        return t[lang].s_ontime;
+        // Hanya cek jika pulang lebih awal dari 17:00
+        return time < outLimit ? t[lang].s_early : t[lang].s_ontime;
       } else {
-        // Shift Malam: 17:15 - 02:15
+        // Shift Malam selesai jam 02:15
         const outLimit = '02:15';
-        const otLimit = '03:15'; // Lembur jika > +1 jam (02:15 + 1 jam)
-
-        // Case 1: Pulang di hari yang sama (sebelum tengah malam)
-        // Karena shift malam selesai jam 02:15 pagi, 
-        // jam 17:15 s/d 23:59 pasti dihitung Pulang Awal.
+        
+        // Jika pulang sebelum jam 12 malam
         if (time >= '17:15' && time <= '23:59') return t[lang].s_early;
-
-        // Case 2: Pulang setelah tengah malam (00:00 ke atas)
+        // Jika pulang setelah jam 12 malam tapi sebelum 02:15
         if (time < outLimit) return t[lang].s_early;
-        if (time >= outLimit && time < otLimit) return t[lang].s_ontime;
-        if (time >= otLimit && time < '12:00') return t[lang].s_overtime;
         
         return t[lang].s_ontime;
       }
@@ -388,7 +377,6 @@ export default function Admin() {
                 {filteredLogs.map((log, index) => {
                   const statusLabel = getStatusLabel(log);
                   const isBadStatus = statusLabel === t[lang].s_late || statusLabel === t[lang].s_early;
-                  const isOvertime = statusLabel === t[lang].s_overtime;
 
                   return (
                     <tr key={log.id} className="hover:bg-slate-50/80 transition-all group">
@@ -419,8 +407,7 @@ export default function Admin() {
                       </td>
                       <td className="p-8 text-center">
                         <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-[0.1em] inline-block shadow-sm 
-                          ${isOvertime ? 'bg-amber-50 text-amber-600 border border-amber-100' : 
-                            isBadStatus ? 'bg-rose-50 text-rose-600 border border-rose-100' : 
+                          ${isBadStatus ? 'bg-rose-50 text-rose-600 border border-rose-100' : 
                             'bg-emerald-50 text-emerald-600 border border-emerald-100'}`}>
                           {statusLabel}
                         </span>
